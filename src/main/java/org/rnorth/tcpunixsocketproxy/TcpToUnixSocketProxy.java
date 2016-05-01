@@ -31,6 +31,7 @@ public class TcpToUnixSocketProxy {
     private ServerSocket listenSocket;
 
     private static final Logger logger = LoggerFactory.getLogger(ProxyThread.class);
+    private Thread acceptThread;
 
     public TcpToUnixSocketProxy(String listenHostname, int listenPort, String unixSocketPath) throws IOException {
 
@@ -47,7 +48,7 @@ public class TcpToUnixSocketProxy {
 
         logger.debug("Listening on {}:{} and proxying to {}", listenSocket.getLocalSocketAddress(), listenSocket.getLocalPort(), unixSocketPath);
 
-        new Thread(() -> {
+        acceptThread = new Thread(() -> {
             while (true) {
                 try {
                     Socket incomingSocket = listenSocket.accept();
@@ -60,13 +61,15 @@ public class TcpToUnixSocketProxy {
                 } catch (IOException ignored) {
                 }
             }
-        }).start();
+        });
+        acceptThread.start();
 
         return listenSocket.getLocalPort();
     }
 
     public void stop() {
         try {
+            acceptThread.interrupt();
             listenSocket.close();
         } catch (IOException ignored) {
         }
