@@ -22,7 +22,6 @@ import java.net.Socket;
  * Purposefully simplistic in implementation, likely to be buggy or suboptimal in performance, may contain nuts.
  *
  * @author Richard North &lt;rich.north@gmail.com&gt;
- *
  */
 public class TcpToUnixSocketProxy {
 
@@ -40,33 +39,41 @@ public class TcpToUnixSocketProxy {
         this.unixSocketPath = unixSocketPath;
     }
 
-    public void start() throws IOException {
+    public int start() throws IOException {
         File file = new File(unixSocketPath);
 
         listenSocket = new ServerSocket();
         listenSocket.bind(new InetSocketAddress(listenHostname, listenPort));
 
-        logger.debug("Listening on {}:{} and proxying to {}", listenHostname, listenPort, unixSocketPath);
+        logger.debug("Listening on {}:{} and proxying to {}", listenSocket.getLocalSocketAddress(), listenSocket.getLocalPort(), unixSocketPath);
 
-        while (true) {
-            Socket incomingSocket = listenSocket.accept();
-            logger.debug("Accepting incoming connection");
+        new Thread(() -> {
+            while (true) {
+                try {
+                    Socket incomingSocket = listenSocket.accept();
+                    logger.debug("Accepting incoming connection");
 
-            AFUNIXSocket outgoingSocket = AFUNIXSocket.newInstance();
-            outgoingSocket.connect(new AFUNIXSocketAddress(file));
+                    AFUNIXSocket outgoingSocket = AFUNIXSocket.newInstance();
+                    outgoingSocket.connect(new AFUNIXSocketAddress(file));
 
-            new ProxyThread(incomingSocket, outgoingSocket);
-        }
+                    new ProxyThread(incomingSocket, outgoingSocket);
+                } catch (IOException ignored) {
+                }
+            }
+        }).start();
+
+        return listenSocket.getLocalPort();
     }
 
     public void stop() {
         try {
             listenSocket.close();
-        } catch (IOException ignored) { }
+        } catch (IOException ignored) {
+        }
     }
 
     public static void main(String[] args) throws IOException {
-        new TcpToUnixSocketProxy("localhost", 2375, "/var/run/docker.sock").start();
+        new TcpToUnixSocketProxy("localhost", 0, "/var/run/docker.sock").start();
     }
 }
 
@@ -82,27 +89,21 @@ class ProxyThread extends Thread {
         OutputStream toServer = serverSocket.getOutputStream();
 
         // Create a thread to copy data from client to server
-        Thread clientToServerThread = new Thread() {
-            @Override
-            public void run() {
-                copyUntilFailure(fromClient, toServer);
-                logger.trace("C->S died, closing sockets");
-                quietlyClose(serverSocket);
-                quietlyClose(clientSocket);
-            }
-        };
+        Thread clientToServerThread = new Thread(() -> {
+            copyUntilFailure(fromClient, toServer);
+            logger.trace("C->S died, closing sockets");
+            quietlyClose(serverSocket);
+            quietlyClose(clientSocket);
+        });
         clientToServerThread.start();
 
         // Create a thread to copy data back from server to client
-        Thread serverToClientThread = new Thread() {
-            @Override
-            public void run() {
-                copyUntilFailure(fromServer, toClient);
-                logger.trace("S->C died, closing sockets");
-                quietlyClose(serverSocket);
-                quietlyClose(clientSocket);
-            }
-        };
+        Thread serverToClientThread = new Thread(() -> {
+            copyUntilFailure(fromServer, toClient);
+            logger.trace("S->C died, closing sockets");
+            quietlyClose(serverSocket);
+            quietlyClose(clientSocket);
+        });
         serverToClientThread.start();
 
     }
