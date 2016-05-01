@@ -1,3 +1,5 @@
+package org.rnorth.tcpunixsocketproxy;
+
 import org.newsclub.net.unix.AFUNIXSocket;
 import org.newsclub.net.unix.AFUNIXSocketAddress;
 import org.slf4j.Logger;
