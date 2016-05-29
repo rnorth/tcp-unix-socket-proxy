@@ -5,8 +5,28 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>org.rnorth</groupId>
-    <artifactId>unixsocketproxy</artifactId>
+    <artifactId>tcp-unix-socket-proxy</artifactId>
     <version>1.0-SNAPSHOT</version>
+
+    <name>TCP to Unix Socket Proxy</name>
+    <description>
+        Listens on a TCP port and proxies connections to a UNIX domain socket.
+    </description>
+    <url>https://github.com/rnorth/tcp-unix-socket-proxy</url>
+    <licenses>
+        <license>
+            <name>MIT</name>
+            <url>http://opensource.org/licenses/MIT</url>
+        </license>
+    </licenses>
+    <developers>
+        <developer>
+            <id>rnorth</id>
+            <name>Richard North</name>
+            <email>rich.north@gmail.com</email>
+        </developer>
+    </developers>
+
     <dependencies>
         <dependency>
             <groupId>com.kohlschutter.junixsocket</groupId>
@@ -42,4 +62,22 @@
             </plugin>
         </plugins>
     </build>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+    <scm>
+        <connection>scm:git:https://github.com/rnorth/tcp-unix-socket-proxy.git</connection>
+        <developerConnection>scm:git:git@github.com:rnorth/tcp-unix-socket-proxy.git</developerConnection>
+        <url>https://github.com/rnorth/tcp-unix-socket-proxy</url>
+        <tag>HEAD</tag>
+    </scm>
+
+    <distributionManagement>
+        <repository>
+            <id>bintray</id>
+            <url>https://api.bintray.com/maven/richnorth/maven/tcp-unix-socket-proxy</url>
+        </repository>
+    </distributionManagement>
 </project>
