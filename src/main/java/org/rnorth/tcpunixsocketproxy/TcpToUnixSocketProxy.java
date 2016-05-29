@@ -7,8 +7,6 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -19,7 +17,7 @@ import java.net.Socket;
  * Like <code>socat TCP-LISTEN:2375,fork UNIX-CONNECT:/var/tmp/docker.sock</code>, except this is literally the only
  * thing this program does.
  * <p>
- * Purposefully simplistic in implementation, likely to be buggy or suboptimal in performance, may contain nuts.
+ * Purposefully simplistic in implementation, using blocking I/O for simplicity over performance.
  *
  * @author Richard North &lt;rich.north@gmail.com&gt;
  */
@@ -27,35 +25,66 @@ public class TcpToUnixSocketProxy {
 
     private final String listenHostname;
     private final int listenPort;
-    private final String unixSocketPath;
+    private final File unixSocketFile;
     private ServerSocket listenSocket;
 
     private static final Logger logger = LoggerFactory.getLogger(ProxyThread.class);
     private Thread acceptThread;
+    private boolean running = true;
 
-    public TcpToUnixSocketProxy(String listenHostname, int listenPort, String unixSocketPath) throws IOException {
+    /**
+     * Create an instance of the proxy that will listen for TCP connections on localhost on a
+     * random available port.
+     * <p>This should be the usual method of instantiating a proxy.</p>
+     * @param unixSocketFile the local unix domain socket as a File
+     */
+    public TcpToUnixSocketProxy(File unixSocketFile) {
+
+        if (!unixSocketFile.exists()) {
+            throw new IllegalArgumentException("Socket file does not exist: " + unixSocketFile);
+        }
+
+        this.listenHostname = "localhost";
+        this.listenPort = 0;
+        this.unixSocketFile = unixSocketFile;
+    }
+    /**
+     * Create an instance of the proxy.
+     * @param listenHostname hostname to listen on
+     * @param listenPort port to listen on, or 0 if an available port should be allocated
+     * @param unixSocketFile the local unix domain socket as a File
+     */
+    public TcpToUnixSocketProxy(String listenHostname, int listenPort, File unixSocketFile) {
+
+        if (!unixSocketFile.exists()) {
+            throw new IllegalArgumentException("Socket file does not exist: " + unixSocketFile);
+        }
 
         this.listenHostname = listenHostname;
         this.listenPort = listenPort;
-        this.unixSocketPath = unixSocketPath;
+        this.unixSocketFile = unixSocketFile;
     }
 
-    public int start() throws IOException {
-        File file = new File(unixSocketPath);
+    /**
+     * Start the proxy
+     * @return the proxy's listening socket address
+     * @throws IOException on socket binding failure
+     */
+    public InetSocketAddress start() throws IOException {
 
         listenSocket = new ServerSocket();
         listenSocket.bind(new InetSocketAddress(listenHostname, listenPort));
 
-        logger.debug("Listening on {}:{} and proxying to {}", listenSocket.getLocalSocketAddress(), listenSocket.getLocalPort(), unixSocketPath);
+        logger.debug("Listening on {} and proxying to {}", listenSocket.getLocalSocketAddress(), unixSocketFile.getAbsolutePath());
 
         acceptThread = new Thread(() -> {
-            while (true) {
+            while (running) {
                 try {
                     Socket incomingSocket = listenSocket.accept();
-                    logger.debug("Accepting incoming connection");
+                    logger.debug("Accepting incoming connection from {}", incomingSocket.getRemoteSocketAddress());
 
                     AFUNIXSocket outgoingSocket = AFUNIXSocket.newInstance();
-                    outgoingSocket.connect(new AFUNIXSocketAddress(file));
+                    outgoingSocket.connect(new AFUNIXSocketAddress(unixSocketFile));
 
                     new ProxyThread(incomingSocket, outgoingSocket);
                 } catch (IOException ignored) {
@@ -64,79 +93,17 @@ public class TcpToUnixSocketProxy {
         });
         acceptThread.start();
 
-        return listenSocket.getLocalPort();
+        return (InetSocketAddress) listenSocket.getLocalSocketAddress();
     }
 
+    /**
+     * Stop the proxy.
+     */
     public void stop() {
         try {
-            acceptThread.interrupt();
+            running = false;
             listenSocket.close();
         } catch (IOException ignored) {
-        }
-    }
-
-    public static void main(String[] args) throws IOException {
-        new TcpToUnixSocketProxy("localhost", 0, "/var/run/docker.sock").start();
-    }
-}
-
-class ProxyThread extends Thread {
-
-    private static final Logger logger = LoggerFactory.getLogger(ProxyThread.class);
-
-    public ProxyThread(final Socket clientSocket, final Socket serverSocket) throws IOException {
-
-        InputStream fromClient = clientSocket.getInputStream();
-        OutputStream toClient = clientSocket.getOutputStream();
-        InputStream fromServer = serverSocket.getInputStream();
-        OutputStream toServer = serverSocket.getOutputStream();
-
-        // Create a thread to copy data from client to server
-        Thread clientToServerThread = new Thread(() -> {
-            copyUntilFailure(fromClient, toServer);
-            logger.trace("C->S died, closing sockets");
-            quietlyClose(serverSocket);
-            quietlyClose(clientSocket);
-        });
-        clientToServerThread.start();
-
-        // Create a thread to copy data back from server to client
-        Thread serverToClientThread = new Thread(() -> {
-            copyUntilFailure(fromServer, toClient);
-            logger.trace("S->C died, closing sockets");
-            quietlyClose(serverSocket);
-            quietlyClose(clientSocket);
-        });
-        serverToClientThread.start();
-
-    }
-
-    /*
-     * Copy data from a from stream to a to stream, until the from stream ends.
-     */
-    private void copyUntilFailure(InputStream from, OutputStream to) {
-        byte[] buffer = new byte[4096];
-
-        int read;
-        try {
-            while ((read = from.read(buffer)) != -1) {
-                to.write(buffer, 0, read);
-                to.flush();
-            }
-        } catch (IOException ignored) {
-            // just return
-        }
-    }
-
-    /*
-     * Close a socket without handling exceptions, which also closes its streams.
-     */
-    private void quietlyClose(Socket socket) {
-        if (socket != null && !socket.isClosed()) {
-            try {
-                socket.close();
-            } catch (IOException ignored) {
-            }
         }
     }
 }
