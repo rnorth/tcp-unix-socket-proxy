@@ -28,7 +28,7 @@ public class TcpToUnixSocketProxy {
     private final File unixSocketFile;
     private ServerSocket listenSocket;
 
-    private static final Logger logger = LoggerFactory.getLogger(ProxyThread.class);
+    private static final Logger logger = LoggerFactory.getLogger(ProxyPump.class);
     private Thread acceptThread;
     private boolean running = true;
 
@@ -86,11 +86,13 @@ public class TcpToUnixSocketProxy {
                     AFUNIXSocket outgoingSocket = AFUNIXSocket.newInstance();
                     outgoingSocket.connect(new AFUNIXSocketAddress(unixSocketFile));
 
-                    new ProxyThread(incomingSocket, outgoingSocket);
+                    new ProxyPump(incomingSocket, outgoingSocket);
                 } catch (IOException ignored) {
                 }
             }
         });
+        acceptThread.setDaemon(true);
+        acceptThread.setName("tcp-unix-proxy-accept-thread");
         acceptThread.start();
 
         return (InetSocketAddress) listenSocket.getLocalSocketAddress();
