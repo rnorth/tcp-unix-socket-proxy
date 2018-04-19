@@ -6,7 +6,7 @@
 
     <groupId>org.rnorth</groupId>
     <artifactId>tcp-unix-socket-proxy</artifactId>
-    <version>1.0.2-SNAPSHOT</version>
+    <version>1.0.2</version>
 
     <name>TCP to Unix Socket Proxy</name>
     <description>
